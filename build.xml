@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+
+<project basedir="." default="dist">
+	
+	<!-- set properties -->
+	<property name="libdir" location="lib" />
+	<property name="progname" location="plus4.jar" />
+	<property name="docdir" location="doc/api" />
+	<property name="srcdir" location="src" />
+	<property name="docwindowtitle" value="Plus/4 Emu" />
+
+	<!-- clean up the source directory -->
+	<target name="clean" depends="docclean">
+		<echo message="Deleting all class files..." />
+		<delete>
+			<fileset dir="${srcdir}" includes="**/*.class,**/*~" />
+			<fileset file="${progname}" />
+		</delete>
+	</target>
+	
+	<!-- Compile source files -->
+	<target name="compile">
+		<echo message="Compiling source files..." />
+		<javac debug="true" target="1.5" source="1.5">
+			<src path="${srcdir}" />
+  			<!--classpath refid="classpath" /-->
+		</javac>
+	</target>
+	
+	<target name="run" depends="dist">
+		<java classpath="${progname}" classname="de.donuz.plus4.Plus4Emu" fork="true"/>
+	</target>
+	
+	<!-- build distribution -->
+	<target name="dist" depends="compile">
+		<echo message="Building JAR file..." />
+		<jar destfile="${progname}" >
+			<fileset dir="${srcdir}" includes="**/*.class" />
+			<fileset dir="${srcdir}" includes="**/*.bin" />
+		</jar>
+	</target>
+	
+	<!-- delete API docs -->
+	<target name="docclean">
+		<echo message="Deleting API docs..." />
+		<delete includeEmptyDirs="true" failOnError="false">
+			<fileset dir="${docdir}" includes="**,**/*.*" />
+		</delete>
+	</target>
+	
+	<!-- generate API docs -->
+	<target name="doc" depends="docclean">
+		<echo message="Generating API docs..." />
+		<mkdir dir="${docdir}" />
+                <javadoc packagenames="gpal.*" 
+                         sourcepath="${srcdir}" 
+                         destdir="${docdir}"
+                         author="true"
+                         version="true"
+                         breakiterator="true"
+                         overview="src/overview.html"
+                         private="true"
+                         windowtitle="${docwindowtitle}">
+                    <classpath refid="classpath" />
+            	</javadoc>
+	</target>
+</project>
