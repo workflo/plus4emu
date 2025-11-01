@@ -10,7 +10,7 @@
 use crate::cpu_state::CpuState;
 
 // Constants
-pub const CLOCK_FREQUENCY: u32 = 50000;//885000;
+pub const CLOCK_FREQUENCY: u32 = 885000;
 // pub const IRQ_FREQUENCY: u32 = CLOCK_FREQUENCY / 60;
 pub const RASTER_LINES: u32 = 312;
 // pub const SCREEN_REFRESH_FREQUENCY: u32 = 57;
@@ -1376,13 +1376,6 @@ impl Plus4 {
         if self.raster_line >= RASTER_LINES {
             self.raster_line = 0;
         }
-
-        // Flash counter for cursor blink
-        self.flash_counter += TICKS_PER_RASTER_LINE;
-        if self.flash_counter >= TICKS_PER_BLINK_INTERVAL {
-            self.flash_counter = 0;
-            self.flash_on = !self.flash_on;
-        }
     }
 
     // Render one line of text mode (40 characters wide, 8 pixels per character)
@@ -1390,37 +1383,85 @@ impl Plus4 {
         let char_row = line / 8; // Which character row (0-24)
         let pixel_row = line % 8; // Which pixel row within the character (0-7)
 
-        // Screen memory starts at 0x0C00 by default (can be changed via TED registers)
-        // Color RAM starts at 0x0800 by default
-        let screen_base = 0x0C00;
-        let color_base = 0x0800;
+        // Video matrix address from register 0xFF14
+        let video_matrix_address = ((self.ram[0xFF14] & 0xF8) as usize) << 8;
 
-        // Character ROM is in system ROM at 0xD000-0xD7FF (when mapped)
-        let charset_base = 0xD000usize;
+        // Background color from TED register 0xFF15
+        let bg_color = self.ram[0xFF15] & 0x7F;
+
+        // Character ROM base from register 0xFF13
+        let charset_base = ((self.ram[0xFF13] & 0xFC) as usize) << 8;
+
+        // Check if charset is from ROM (bit 2 of 0xFF12)
+        let charset_from_rom = (self.ram[0xFF12] & 4) != 0;
+
+        // Check if using 256 character set (bit 7 of 0xFF07)
+        let charset_256 = (self.ram[0xFF07] & 128) != 0;
+
+        // Get cursor position from TED registers 0xFF0C (high) and 0xFF0D (low)
+        let cursor_address = ((self.ram[0xFF0C] as usize) << 8) | (self.ram[0xFF0D] as usize);
+        let bitmap_mode = (self.ram[0xFF06] & 32) != 0;
 
         for col in 0..40 {
-            let screen_addr = screen_base + char_row * 40 + col;
-            let char_code = self.ram[screen_addr] as usize;
+            let screen_offset = col + char_row * 40;
 
-            // Get color for this character
-            let color_addr = color_base + char_row * 40 + col;
+            // Character code from video_matrix + 1024
+            let char_addr = (video_matrix_address + 1024 + screen_offset) & 0xFFFF;
+            let mut char_code = self.ram[char_addr] as usize;
+
+            // Check if this is the cursor position and flash is on
+            let is_cursor_char = cursor_address == screen_offset && self.flash_on && !bitmap_mode;
+            if is_cursor_char {
+                // Invert character code by XORing with 0x80
+                char_code ^= 0x80;
+            }
+
+            // Get color for this character from video_matrix
+            let color_addr = (video_matrix_address + screen_offset) & 0xFFFF;
             let color = self.ram[color_addr] & 0x7F; // 7 bits for color
 
-            // Background color from TED register 0xFF15
-            let bg_color = self.ram[0xFF15] & 0x7F;
-
-            // Get character bitmap from ROM
-            let char_addr = charset_base + char_code * 8 + pixel_row;
-            let char_data = if char_addr >= 0xD000 && char_addr < 0xD800 {
-                // Read from character ROM (embedded in system ROM)
-                let rom_offset = char_addr - 0x8000; // ROM starts at 0x8000
-                if rom_offset < self.rom.len() {
-                    self.rom[rom_offset]
+            // Get character bitmap
+            let char_data = if charset_256 {
+                // 256 character mode
+                let addr = charset_base + char_code * 8 + pixel_row;
+                if charset_from_rom {
+                    let rom_offset = addr.wrapping_sub(0x8000);
+                    if rom_offset < self.rom.len() {
+                        self.rom[rom_offset]
+                    } else {
+                        0
+                    }
                 } else {
-                    0
+                    self.ram[addr & 0xFFFF]
                 }
             } else {
-                0
+                // 128 character mode - invert for codes > 127
+                if char_code > 127 {
+                    let addr = charset_base + (char_code - 128) * 8 + pixel_row;
+                    let data = if charset_from_rom {
+                        let rom_offset = addr.wrapping_sub(0x8000);
+                        if rom_offset < self.rom.len() {
+                            self.rom[rom_offset]
+                        } else {
+                            0
+                        }
+                    } else {
+                        self.ram[addr & 0xFFFF]
+                    };
+                    !data // Invert
+                } else {
+                    let addr = charset_base + char_code * 8 + pixel_row;
+                    if charset_from_rom {
+                        let rom_offset = addr.wrapping_sub(0x8000);
+                        if rom_offset < self.rom.len() {
+                            self.rom[rom_offset]
+                        } else {
+                            0
+                        }
+                    } else {
+                        self.ram[addr & 0xFFFF]
+                    }
+                }
             };
 
             // Render 8 pixels for this character
@@ -1442,6 +1483,13 @@ impl Plus4 {
         let clock_multiplier = if (self.ram[0xFF06] & 16) != 0 { 2 } else { 1 };
 
         self.clock_counter += self.clock_ticks * clock_multiplier;
+
+        // Flash counter for cursor blink
+        self.flash_counter += self.clock_ticks;
+        if self.flash_counter >= TICKS_PER_BLINK_INTERVAL {
+            self.flash_counter = 0;
+            self.flash_on = !self.flash_on;
+        }
 
         // Timer updates would go here
 
