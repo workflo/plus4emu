@@ -10,7 +10,7 @@
 use crate::cpu_state::CpuState;
 
 // Constants
-pub const CLOCK_FREQUENCY: u32 = 885000;
+pub const CLOCK_FREQUENCY: u32 = 50000;//885000;
 // pub const IRQ_FREQUENCY: u32 = CLOCK_FREQUENCY / 60;
 pub const RASTER_LINES: u32 = 312;
 // pub const SCREEN_REFRESH_FREQUENCY: u32 = 57;
