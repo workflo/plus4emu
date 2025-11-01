@@ -1255,16 +1255,24 @@ impl Plus4 {
         }
     }
 
-    // Render one raster line (simplified)
+    // Render one raster line
     fn render_raster_line(&mut self) {
         if self.raster_line >= FIRST_SCREEN_LINE as u32
             && self.raster_line < (FIRST_SCREEN_LINE + SCREEN_HEIGHT) as u32
         {
             let line = (self.raster_line - FIRST_SCREEN_LINE as u32) as usize;
 
-            // Simple black screen for now
-            for x in 0..SCREEN_WIDTH {
-                self.pixels[line][x] = 0; // Black
+            // Check if we're in bitmap mode (bit 5 of 0xFF06)
+            let bitmap_mode = (self.ram[0xFF06] & 32) != 0;
+
+            if bitmap_mode {
+                // Bitmap mode rendering (not implemented yet)
+                for x in 0..SCREEN_WIDTH {
+                    self.pixels[line][x] = 0; // Black for now
+                }
+            } else {
+                // Text mode rendering (40x25 characters, 8x8 pixels each)
+                self.render_text_line(line);
             }
         }
 
@@ -1278,6 +1286,55 @@ impl Plus4 {
         if self.flash_counter >= TICKS_PER_BLINK_INTERVAL {
             self.flash_counter = 0;
             self.flash_on = !self.flash_on;
+        }
+    }
+
+    // Render one line of text mode (40 characters wide, 8 pixels per character)
+    fn render_text_line(&mut self, line: usize) {
+        let char_row = line / 8; // Which character row (0-24)
+        let pixel_row = line % 8; // Which pixel row within the character (0-7)
+
+        // Screen memory starts at 0x0C00 by default (can be changed via TED registers)
+        // Color RAM starts at 0x0800 by default
+        let screen_base = 0x0C00;
+        let color_base = 0x0800;
+
+        // Character ROM is in system ROM at 0xD000-0xD7FF (when mapped)
+        let charset_base = 0xD000usize;
+
+        for col in 0..40 {
+            let screen_addr = screen_base + char_row * 40 + col;
+            let char_code = self.ram[screen_addr] as usize;
+
+            // Get color for this character
+            let color_addr = color_base + char_row * 40 + col;
+            let color = self.ram[color_addr] & 0x7F; // 7 bits for color
+
+            // Background color from TED register 0xFF15
+            let bg_color = self.ram[0xFF15] & 0x7F;
+
+            // Get character bitmap from ROM
+            let char_addr = charset_base + char_code * 8 + pixel_row;
+            let char_data = if char_addr >= 0xD000 && char_addr < 0xD800 {
+                // Read from character ROM (embedded in system ROM)
+                let rom_offset = char_addr - 0x8000; // ROM starts at 0x8000
+                if rom_offset < self.rom.len() {
+                    self.rom[rom_offset]
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            // Render 8 pixels for this character
+            for bit in 0..8 {
+                let x = col * 8 + bit;
+                if x < SCREEN_WIDTH {
+                    let pixel_set = (char_data & (0x80 >> bit)) != 0;
+                    self.pixels[line][x] = if pixel_set { color } else { bg_color };
+                }
+            }
         }
     }
 
