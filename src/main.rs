@@ -49,11 +49,8 @@ async fn main() {
     // Emulation state
     let cycles_per_frame = plus4::CLOCK_FREQUENCY / 60;
     let mut accumulated_cycles;
-    let mut frame_count = 0;
-    let mut debug_printed = false;
 
     println!("Plus/4 Emulator started!");
-    println!("PC: 0x{:04X}", emulator.cpu.pc);
     println!("Press ESC to exit");
 
     loop {
@@ -74,13 +71,6 @@ async fn main() {
             if accumulated_cycles > cycles_per_frame * 2 {
                 break;
             }
-        }
-
-        // Debug BASIC memory pointers after ROM has fully initialized
-        frame_count += 1;
-        if frame_count == 600 && !debug_printed {  // After 10 seconds
-            emulator.debug_basic_pointers();
-            debug_printed = true;
         }
 
         // Update screen with emulator's pixel buffer
