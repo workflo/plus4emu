@@ -42,6 +42,7 @@ pub struct Plus4 {
 
     // Timers
     timer_on: [bool; 3],
+    timer_overflow: [bool; 3],
 
     // Screen buffer
     pub pixels: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
@@ -65,6 +66,7 @@ impl Plus4 {
             raster_line: 0,
             flash_on: false,
             timer_on: [false; 3],
+            timer_overflow: [false; 3],
             pixels: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
             keyboard_matrix: [[false; 8]; 8],
         }
@@ -118,28 +120,29 @@ impl Plus4 {
             0xFF3E => {
                 // Enable ROM
                 self.rom_active = true;
-                return;
             }
             0xFF3F => {
                 // Enable RAM
                 self.rom_active = false;
-                return;
             }
             0xFDD0..=0xFDDF => {
                 // Bank switching
                 self.rom_config = (addr & 15) as u8;
-                return;
-            }
-            0xFD30 => {
-                // Handle keyboard input
-                self.p4_keyboard();
             }
             _ => {}
         }
 
-        // Don't write to keyboard register
+        // Write value to RAM (including 0xFF08 for joystick port selection)
         if addr != 0xFF08 {
             self.ram[addr] = value;
+        }
+
+        println!("Poke: addr=0x{:04X}, value=0x{:02X}", addr, value);
+
+        // Handle keyboard latch write (AFTER writing to RAM)
+        if addr == 0xFD30 {
+            // See http://plus4world.powweb.com/plus4encyclopedia/500012
+            self.p4_keyboard();
         }
 
         // TED chip registers
@@ -152,13 +155,25 @@ impl Plus4 {
                 0xFF04 => self.timer_on[2] = false,
                 0xFF05 => self.timer_on[2] = true,
                 0xFF08 => {
-                    if value == 0xFA {
+                    // Write to 0xFF08 triggers keyboard scan (after joystick handling)
+                    // This is how the Plus/4 ROM scans the keyboard
+                    if value == 0xFB {
                         self.p4_joystick(1);
                     }
                     if value == 0xFD {
                         self.p4_joystick(2);
                     }
-                    self.p4_keyboard();
+                    // Always call keyboard scan after 0xFF08 write
+                    // self.p4_keyboard();
+                }
+                0xFF09 => {
+                    // IRR (Interrupt Request Register) - writing clears the interrupt bits
+                    // Only clear the bits that are set in the written value
+                    self.ram[0xFF09] &= !value;
+                }
+                0xFF0A => {
+                    // IMR (Interrupt Mask Register) - controls which interrupts are enabled
+                    // Direct write to register (already handled by ram write above)
                 }
                 _ => {}
             }
@@ -250,18 +265,27 @@ impl Plus4 {
     }
 
     // Keyboard input handler
+    // According to Plus/4 documentation: "To read keyboard/joystick inputs, a selector
+    // value must be written to BOTH the keyboard latch at $FD30 AND the joystick latch
+    // at $FF08, with the resulting answer being read from $FF08."
     fn p4_keyboard(&mut self) {
-        // Read latch from 0xFD30
-        let latch = self.ram[0xFD30];
+        // Read BOTH latches - keyboard selector from 0xFD30 AND joystick selector from 0xFF08
+        let kbd_latch = self.ram[0xFD30];
+        // let joy_latch = self.ram[0xFF08];
 
-        // If latch is 0xFF, no row is selected
-        if latch == 0xFF {
+        // Combine both latches (AND operation - both must select the row)
+        let combined_latch = kbd_latch;// & joy_latch;
+
+        println!("Keyboard scan: latch=0x{:02X}", combined_latch);
+
+        // If combined latch is 0xFF, no row is selected
+        if combined_latch == 0xFF {
             self.ram[0xFF08] = 0xFF;
             return;
         }
 
         // Invert latch (active low)
-        let latch_inverted = !latch;
+        let latch_inverted = !combined_latch;
 
         // Read keyboard matrix for selected row(s)
         let mut result = 0xFFu8;
@@ -336,6 +360,8 @@ impl Plus4 {
     pub fn execute_instruction(&mut self) {
         let opcode = self.peek(self.cpu.pc);
         self.clock_ticks = 2; // Default timing
+
+        // println!("Executing opcode 0x{:02X} at PC=0x{:04X}", opcode, self.cpu.pc);
 
         match opcode {
             // LDA - Load Accumulator
@@ -1270,6 +1296,7 @@ impl Plus4 {
                 self.set_flags(flags);
                 self.cpu.pc = self.pull_word();
                 self.clock_ticks = 6;
+                self.cpu.i = false;
             }
 
             // Branch instructions
@@ -1370,11 +1397,10 @@ impl Plus4 {
             }
 
             0x00 => { // BRK
-                self.cpu.incr_pc(1);
-                self.push_word(self.cpu.pc);
-                self.cpu.b = true;
-                self.push(self.get_flags());
                 self.cpu.i = true;
+                self.cpu.b = true;
+                self.push_word(self.cpu.pc + 2);
+                self.push(self.get_flags());
                 let irq_lo = self.rom[0xFFFE - 0x8000] as u16;
                 let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
                 self.cpu.pc = (irq_hi << 8) | irq_lo;
@@ -1413,6 +1439,33 @@ impl Plus4 {
         self.raster_line += 1;
         if self.raster_line >= RASTER_LINES {
             self.raster_line = 0;
+        }
+
+        // Raster interrupt handling
+        // Raster interrupt line is 9-bit: bit 0 of 0xFF0A (high bit) + 0xFF0B (low byte)
+        let raster_interrupt_line = (((self.ram[0xFF0A] & 1) as u32) << 8) + self.ram[0xFF0B] as u32;
+
+        if self.raster_line == raster_interrupt_line {
+            // Set raster interrupt bit (bit 1) + master interrupt flag (bit 7)
+            self.ram[0xFF09] |= 2 + 128;
+
+            // Check if interrupt should trigger: interrupt flag clear AND raster interrupt enabled in mask
+            if !self.cpu.i && (self.ram[0xFF0A] & 2) != 0 {
+                // Push PC to stack (high byte first, then low byte)
+                self.push((self.cpu.pc >> 8) as u8);
+                self.push((self.cpu.pc & 0xFF) as u8);
+
+                // Push processor flags
+                self.push(self.get_flags());
+
+                // Set interrupt disable flag
+                self.cpu.i = true;
+
+                // Jump to IRQ vector at 0xFFFE/0xFFFF
+                let irq_lo = self.peek(0xFFFE) as u16;
+                let irq_hi = self.peek(0xFFFF) as u16;
+                self.cpu.pc = irq_lo | (irq_hi << 8);
+            }
         }
     }
 
@@ -1529,7 +1582,77 @@ impl Plus4 {
             self.flash_on = !self.flash_on;
         }
 
-        // Timer updates would go here
+        // TED Timer A, B & C countdown
+        for timer_idx in 0..3 {
+            self.timer_overflow[timer_idx] = false;
+
+            if self.timer_on[timer_idx] {
+                // Read 16-bit timer value from registers
+                let timer_value = self.ram[0xFF00 + timer_idx*2] as u16
+                    + ((self.ram[0xFF01 + timer_idx*2] as u16) << 8);
+
+                // Check if timer underflows
+                let ticks = (self.clock_ticks * clock_multiplier) as u16;
+                self.timer_overflow[timer_idx] = timer_value < ticks;
+
+                // Subtract clock ticks from timer value (with wrapping)
+                let mut new_timer_value = timer_value.wrapping_sub(ticks);
+
+                // Special handling for Timer A: subtract additional 0xC60E on overflow
+                if self.timer_overflow[timer_idx] && timer_idx == 0 {
+                    new_timer_value = new_timer_value.wrapping_sub(0xC60E);
+                }
+
+                // Write updated timer value back to registers
+                self.ram[0xFF00 + timer_idx*2] = (new_timer_value & 0xFF) as u8;
+                self.ram[0xFF01 + timer_idx*2] = ((new_timer_value >> 8) & 0xFF) as u8;
+            }
+        }
+
+        // println!("Timer A: {:04X}, Timer B: {:04X}, Timer C: {:04X}", 
+        //     self.ram[0xFF00] as u16 + ((self.ram[0xFF01] as u16) << 8),
+        //     self.ram[0xFF02] as u16 + ((self.ram[0xFF03] as u16) << 8),
+        //     self.ram[0xFF04] as u16 + ((self.ram[0xFF05] as u16) << 8)
+        // );
+
+        // Generate IRQs for timer overflows
+        for timer_idx in 0..3 {
+            if self.timer_on[timer_idx] && self.timer_overflow[timer_idx] {
+                // Determine which IRR bit to set
+                let bit = match timer_idx {
+                    0 => 8,   // Timer A: bit 3
+                    1 => 16,  // Timer B: bit 4
+                    2 => 64,  // Timer C: bit 6
+                    _ => 0,
+                };
+
+                println!("Timer {} overflow, setting IRR bit {}, i={}, 0xff0a={:02X}", timer_idx + 1, bit, self.cpu.i, self.ram[0xFF0A]);
+
+                // Set IRR bit + master interrupt flag (bit 7 = 128)
+                self.ram[0xFF09] |= bit + 128;
+
+                // Check if interrupt should trigger
+                // Interrupt fires if: interrupt flag is clear AND interrupt is enabled in mask
+                if !self.cpu.i && (self.ram[0xFF0A] & bit) != 0 {
+                    // Push PC to stack (high byte first, then low byte)
+                    self.push((self.cpu.pc >> 8) as u8);
+                    self.push((self.cpu.pc & 0xFF) as u8);
+
+                    // Push processor flags
+                    self.push(self.get_flags());
+
+                    // Set interrupt disable flag
+                    self.cpu.i = true;
+
+                    // Jump to IRQ vector at 0xFFFE/0xFFFF
+                    let irq_lo = self.rom[0xFFFE - 0x8000] as u16;
+                    let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
+                    self.cpu.pc = irq_lo | (irq_hi << 8);
+
+                    println!("Timer {} IRQ triggered, jumping to {:04X}", timer_idx + 1, self.cpu.pc);
+                }
+            }
+        }
 
         // Render raster line if needed
         if self.clock_counter >= TICKS_PER_RASTER_LINE {

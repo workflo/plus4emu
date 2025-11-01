@@ -107,6 +107,12 @@ impl KeyboardMatrix {
         if is_key_down(KeyCode::LeftAlt) || is_key_down(KeyCode::RightAlt) { self.matrix[7][5] = true; }  // C= (Commodore key)
         if is_key_down(KeyCode::Q) { self.matrix[7][6] = true; }
         if is_key_down(KeyCode::Tab) { self.matrix[7][7] = true; }         // Run/Stop
+
+        // Debug output only if at least one key is pressed
+        // let any_key_pressed = self.matrix.iter().any(|row| row.iter().any(|&pressed| pressed));
+        // if any_key_pressed {
+            // println!("Keyboard matrix updated: {}", self.matrix.iter().map(|row| format!("{:?}", row)).collect::<Vec<_>>().join(" | "));
+        // }
     }
 
     /// Read keyboard matrix for a given latch value
