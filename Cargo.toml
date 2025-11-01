@@ -1,0 +1,14 @@
+[package]
+name = "plus4emu"
+version = "0.1.0"
+edition = "2021"
+authors = ["Florian Wolff <florian@donuz.de>"]
+license = "GPL-2.0"
+description = "Commodore Plus/4 emulator written in Rust with macroquad"
+
+[dependencies]
+macroquad = "0.4"
+
+[[bin]]
+name = "plus4emu"
+path = "src/main.rs"
