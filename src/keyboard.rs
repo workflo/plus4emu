@@ -59,17 +59,17 @@ impl KeyboardMatrix {
         }
     }
 
-    pub fn read(&self, row: u8) -> u8 {
-        let mut result = 0xFFu8;
+    // pub fn read(&self, row: u8) -> u8 {
+    //     let mut result = 0xFFu8;
 
-        if row < 8 {
-            for col in 0..8 {
-                if self.matrix[row as usize][col] {
-                    result &= !(1 << col);
-                }
-            }
-        }
+    //     if row < 8 {
+    //         for col in 0..8 {
+    //             if self.matrix[row as usize][col] {
+    //                 result &= !(1 << col);
+    //             }
+    //         }
+    //     }
 
-        result
-    }
+    //     result
+    // }
 }

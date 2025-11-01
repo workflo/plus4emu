@@ -65,11 +65,11 @@ impl CpuState {
     }
 
     // Flag operations
-    fn neg_flag(&mut self, byte: u8) {
+    pub fn neg_flag(&mut self, byte: u8) {
         self.n = (byte & 0x80) != 0;
     }
 
-    fn zero_flag(&mut self, byte: u8) {
+    pub fn zero_flag(&mut self, byte: u8) {
         self.z = byte == 0;
     }
 

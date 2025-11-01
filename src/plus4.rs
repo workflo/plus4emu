@@ -11,9 +11,9 @@ use crate::cpu_state::CpuState;
 
 // Constants
 pub const CLOCK_FREQUENCY: u32 = 885000;
-pub const IRQ_FREQUENCY: u32 = CLOCK_FREQUENCY / 60;
+// pub const IRQ_FREQUENCY: u32 = CLOCK_FREQUENCY / 60;
 pub const RASTER_LINES: u32 = 312;
-pub const SCREEN_REFRESH_FREQUENCY: u32 = 57;
+// pub const SCREEN_REFRESH_FREQUENCY: u32 = 57;
 pub const TICKS_PER_RASTER_LINE: u32 = 114;
 pub const TICKS_PER_BLINK_INTERVAL: u32 = CLOCK_FREQUENCY / 8;
 pub const SCREEN_WIDTH: usize = 320;
@@ -425,8 +425,24 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0xB6 => { // LDX zeropage,Y
+                let addr = self.get_addr_zeropage_y();
+                self.cpu.xr = self.peek(addr);
+                self.cpu.z = self.cpu.xr == 0;
+                self.cpu.n = (self.cpu.xr & 0x80) != 0;
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0xAE => { // LDX absolute
                 let addr = self.get_addr_absolute();
+                self.cpu.xr = self.peek(addr);
+                self.cpu.z = self.cpu.xr == 0;
+                self.cpu.n = (self.cpu.xr & 0x80) != 0;
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xBE => { // LDX absolute,Y
+                let addr = self.get_addr_absolute_y();
                 self.cpu.xr = self.peek(addr);
                 self.cpu.z = self.cpu.xr == 0;
                 self.cpu.n = (self.cpu.xr & 0x80) != 0;
@@ -450,8 +466,24 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0xB4 => { // LDY zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                self.cpu.yr = self.peek(addr);
+                self.cpu.z = self.cpu.yr == 0;
+                self.cpu.n = (self.cpu.yr & 0x80) != 0;
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0xAC => { // LDY absolute
                 let addr = self.get_addr_absolute();
+                self.cpu.yr = self.peek(addr);
+                self.cpu.z = self.cpu.yr == 0;
+                self.cpu.n = (self.cpu.yr & 0x80) != 0;
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xBC => { // LDY absolute,X
+                let addr = self.get_addr_absolute_x();
                 self.cpu.yr = self.peek(addr);
                 self.cpu.z = self.cpu.yr == 0;
                 self.cpu.n = (self.cpu.yr & 0x80) != 0;
@@ -466,6 +498,12 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0x96 => { // STX zeropage,Y
+                let addr = self.get_addr_zeropage_y();
+                self.poke(addr, self.cpu.xr);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0x8E => { // STX absolute
                 let addr = self.get_addr_absolute();
                 self.poke(addr, self.cpu.xr);
@@ -479,6 +517,12 @@ impl Plus4 {
                 self.poke(addr, self.cpu.yr);
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
+            }
+            0x94 => { // STY zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                self.poke(addr, self.cpu.yr);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
             }
             0x8C => { // STY absolute
                 let addr = self.get_addr_absolute();
@@ -541,12 +585,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0x35 => { // AND zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_and(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0x2D => { // AND absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_and(value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0x3D => { // AND absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_and(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x39 => { // AND absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_and(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x21 => { // AND (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_and(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x31 => { // AND (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_and(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             0x09 => { // ORA #immediate
@@ -562,12 +641,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0x15 => { // ORA zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_ora(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0x0D => { // ORA absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_ora(value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0x1D => { // ORA absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_ora(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x19 => { // ORA absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_ora(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x01 => { // ORA (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_ora(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x11 => { // ORA (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_ora(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             0x49 => { // EOR #immediate
@@ -583,12 +697,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0x55 => { // EOR zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_eor(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0x4D => { // EOR absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_eor(value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0x5D => { // EOR absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_eor(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x59 => { // EOR absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_eor(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x41 => { // EOR (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_eor(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x51 => { // EOR (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_eor(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             // Compare operations
@@ -605,12 +754,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0xD5 => { // CMP zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.acc, value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0xCD => { // CMP absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_cmp(self.cpu.acc, value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0xD9 => { // CMP absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.acc, value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xDD => { // CMP absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.acc, value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xC1 => { // CMP (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.acc, value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0xD1 => { // CMP (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.acc, value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             0xE0 => { // CPX #immediate
@@ -626,6 +810,13 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0xEC => { // CPX absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.xr, value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
 
             0xC0 => { // CPY #immediate
                 let value = self.peek(self.cpu.pc + 1);
@@ -639,6 +830,13 @@ impl Plus4 {
                 self.cpu.do_cmp(self.cpu.yr, value);
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
+            }
+            0xCC => { // CPY absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                self.cpu.do_cmp(self.cpu.yr, value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
             }
 
             // Arithmetic operations
@@ -655,12 +853,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0x75 => { // ADC zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_adc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0x6D => { // ADC absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_adc(value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0x7D => { // ADC absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_adc(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x79 => { // ADC absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_adc(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0x61 => { // ADC (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_adc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x71 => { // ADC (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_adc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             0xE9 => { // SBC #immediate
@@ -676,12 +909,47 @@ impl Plus4 {
                 self.cpu.incr_pc(2);
                 self.clock_ticks = 3;
             }
+            0xF5 => { // SBC zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                self.cpu.do_sbc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 4;
+            }
             0xED => { // SBC absolute
                 let addr = self.get_addr_absolute();
                 let value = self.peek(addr);
                 self.cpu.do_sbc(value);
                 self.cpu.incr_pc(3);
                 self.clock_ticks = 4;
+            }
+            0xFD => { // SBC absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                self.cpu.do_sbc(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xF9 => { // SBC absolute,Y
+                let addr = self.get_addr_absolute_y();
+                let value = self.peek(addr);
+                self.cpu.do_sbc(value);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 4;
+            }
+            0xE1 => { // SBC (indirect,X)
+                let addr = self.get_addr_indirect_x();
+                let value = self.peek(addr);
+                self.cpu.do_sbc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0xF1 => { // SBC (indirect),Y
+                let addr = self.get_addr_indirect_y();
+                let value = self.peek(addr);
+                self.cpu.do_sbc(value);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
             }
 
             // Shift/Rotate operations
@@ -695,6 +963,38 @@ impl Plus4 {
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
             }
+            0x46 => { // LSR zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = self.cpu.do_lsr(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0x56 => { // LSR zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_lsr(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x4E => { // LSR absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = self.cpu.do_lsr(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0x5E => { // LSR absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_lsr(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
+            }
             0x2A => { // ROL accumulator
                 self.cpu.acc = self.cpu.do_rol(self.cpu.acc);
                 self.cpu.incr_pc(1);
@@ -704,6 +1004,90 @@ impl Plus4 {
                 self.cpu.acc = self.cpu.do_ror(self.cpu.acc);
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
+            }
+
+            // INC - Increment Memory
+            0xE6 => { // INC zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = value.wrapping_add(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0xF6 => { // INC zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = value.wrapping_add(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0xEE => { // INC absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = value.wrapping_add(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0xFE => { // INC absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = value.wrapping_add(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
+            }
+
+            // DEC - Decrement Memory
+            0xC6 => { // DEC zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = value.wrapping_sub(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0xD6 => { // DEC zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = value.wrapping_sub(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0xCE => { // DEC absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = value.wrapping_sub(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0xDE => { // DEC absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = value.wrapping_sub(1);
+                self.cpu.neg_flag(result);
+                self.cpu.zero_flag(result);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
             }
 
             // Bit test
@@ -846,7 +1230,7 @@ impl Plus4 {
             0xB8 => { self.cpu.v = false; self.cpu.incr_pc(1); self.clock_ticks = 2; } // CLV
 
             // NOP and illegal opcodes
-            0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA => { // NOP
+            0xEA | 0x1A | 0x3A | 0x5A | 0x7A | 0xDA | 0xFA | 0xFC | 0x3F | 0x7F | 0x07 => { // NOP
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
             }

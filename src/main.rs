@@ -47,8 +47,8 @@ async fn main() {
     let mut keyboard = KeyboardMatrix::new();
 
     // Emulation state
-    let mut cycles_per_frame = plus4::CLOCK_FREQUENCY / 60;
-    let mut accumulated_cycles = 0u32;
+    let cycles_per_frame = plus4::CLOCK_FREQUENCY / 60;
+    let mut accumulated_cycles;
 
     println!("Plus/4 Emulator started!");
     println!("PC: 0x{:04X}", emulator.cpu.pc);
