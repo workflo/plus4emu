@@ -2,7 +2,7 @@
 name = "plus4emu"
 version = "0.1.0"
 edition = "2021"
-authors = ["Florian Wolff <florian@donuz.de>"]
+authors = ["Florian Wolff <overflo@outlook.de>"]
 license = "GPL-2.0"
 description = "Commodore Plus/4 emulator written in Rust with macroquad"
 

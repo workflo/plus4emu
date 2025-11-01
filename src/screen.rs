@@ -96,7 +96,12 @@ impl Screen {
             }
         }
 
-        self.texture.update(&rgba_data);
+        let image = Image {
+            bytes: rgba_data,
+            width: SCREEN_WIDTH as u16,
+            height: SCREEN_HEIGHT as u16,
+        };
+        self.texture.update(&image);
     }
 
     pub fn draw(&self, scale: f32) {
