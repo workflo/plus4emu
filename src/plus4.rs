@@ -137,7 +137,7 @@ impl Plus4 {
             self.ram[addr] = value;
         }
 
-        println!("Poke: addr=0x{:04X}, value=0x{:02X}", addr, value);
+        // println!("Poke: addr=0x{:04X}, value=0x{:02X}", addr, value);
 
         // Handle keyboard latch write (AFTER writing to RAM)
         if addr == 0xFD30 {
@@ -274,9 +274,9 @@ impl Plus4 {
         // let joy_latch = self.ram[0xFF08];
 
         // Combine both latches (AND operation - both must select the row)
-        let combined_latch = kbd_latch;// & joy_latch;
+        let combined_latch = kbd_latch; // & joy_latch;
 
-        println!("Keyboard scan: latch=0x{:02X}", combined_latch);
+        // println!("Keyboard scan: latch=0x{:02X}", combined_latch);
 
         // If combined latch is 0xFF, no row is selected
         if combined_latch == 0xFF {
@@ -288,7 +288,7 @@ impl Plus4 {
         let latch_inverted = !combined_latch;
 
         // Read keyboard matrix for selected row(s)
-        let mut result = 0xFFu8;
+        let mut result = 0x00u8;
 
         // Check each row bit
         for row in 0..8 {
@@ -296,14 +296,16 @@ impl Plus4 {
                 // This row is selected, check all columns
                 for col in 0..8 {
                     if self.keyboard_matrix[row][col] {
-                        result &= !(1 << col);  // Pull bit low if key pressed
+                        result |= 1 << col;
                     }
                 }
             }
         }
 
+        println!("Keyboard read: latch=0x{:02X}, latch_inverted={:08b} result=0x{:02X}", combined_latch, latch_inverted, result ^ 0xff);
+
         // Write result to 0xFF08
-        self.ram[0xFF08] = result;
+        self.ram[0xFF08] = result ^ 0xff;
     }
 
     fn p4_joystick(&mut self, _port: u8) {
@@ -1626,7 +1628,7 @@ impl Plus4 {
                     _ => 0,
                 };
 
-                println!("Timer {} overflow, setting IRR bit {}, i={}, 0xff0a={:02X}", timer_idx + 1, bit, self.cpu.i, self.ram[0xFF0A]);
+                // println!("Timer {} overflow, setting IRR bit {}, i={}, 0xff0a={:02X}", timer_idx + 1, bit, self.cpu.i, self.ram[0xFF0A]);
 
                 // Set IRR bit + master interrupt flag (bit 7 = 128)
                 self.ram[0xFF09] |= bit + 128;
@@ -1649,7 +1651,7 @@ impl Plus4 {
                     let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
                     self.cpu.pc = irq_lo | (irq_hi << 8);
 
-                    println!("Timer {} IRQ triggered, jumping to {:04X}", timer_idx + 1, self.cpu.pc);
+                    // println!("Timer {} IRQ triggered, jumping to {:04X}", timer_idx + 1, self.cpu.pc);
                 }
             }
         }

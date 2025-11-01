@@ -111,7 +111,7 @@ impl KeyboardMatrix {
         // Debug output only if at least one key is pressed
         // let any_key_pressed = self.matrix.iter().any(|row| row.iter().any(|&pressed| pressed));
         // if any_key_pressed {
-            // println!("Keyboard matrix updated: {}", self.matrix.iter().map(|row| format!("{:?}", row)).collect::<Vec<_>>().join(" | "));
+        //     println!("Keyboard matrix updated: {}", self.matrix.iter().map(|row| format!("{:?}", row)).collect::<Vec<_>>().join(" | "));
         // }
     }
 
