@@ -45,6 +45,9 @@ pub struct Plus4 {
 
     // Screen buffer
     pub pixels: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+
+    // Keyboard matrix state
+    keyboard_matrix: [[bool; 8]; 8],
 }
 
 impl Plus4 {
@@ -63,6 +66,7 @@ impl Plus4 {
             flash_on: false,
             timer_on: [false; 3],
             pixels: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
+            keyboard_matrix: [[false; 8]; 8],
         }
     }
 
@@ -112,16 +116,23 @@ impl Plus4 {
 
         match addr {
             0xFF3E => {
+                // Enable ROM
                 self.rom_active = true;
                 return;
             }
             0xFF3F => {
+                // Enable RAM
                 self.rom_active = false;
                 return;
             }
             0xFDD0..=0xFDDF => {
+                // Bank switching
                 self.rom_config = (addr & 15) as u8;
                 return;
+            }
+            0xFD30 => {
+                // Handle keyboard input
+                self.p4_keyboard();
             }
             _ => {}
         }
@@ -129,11 +140,6 @@ impl Plus4 {
         // Don't write to keyboard register
         if addr != 0xFF08 {
             self.ram[addr] = value;
-        }
-
-        // Handle keyboard input
-        if addr == 0xFD30 {
-            self.p4_keyboard();
         }
 
         // TED chip registers
@@ -238,10 +244,42 @@ impl Plus4 {
         self.raster_line = 0;
     }
 
-    // Input placeholders
+    // Update keyboard matrix state from external keyboard
+    pub fn update_keyboard(&mut self, keyboard_matrix: [[bool; 8]; 8]) {
+        self.keyboard_matrix = keyboard_matrix;
+    }
+
+    // Keyboard input handler
     fn p4_keyboard(&mut self) {
-        // Keyboard matrix implementation - placeholder
-        self.ram[0xFF08] = 0xFF;
+        // Read latch from 0xFD30
+        let latch = self.ram[0xFD30];
+
+        // If latch is 0xFF, no row is selected
+        if latch == 0xFF {
+            self.ram[0xFF08] = 0xFF;
+            return;
+        }
+
+        // Invert latch (active low)
+        let latch_inverted = !latch;
+
+        // Read keyboard matrix for selected row(s)
+        let mut result = 0xFFu8;
+
+        // Check each row bit
+        for row in 0..8 {
+            if (latch_inverted & (1 << row)) != 0 {
+                // This row is selected, check all columns
+                for col in 0..8 {
+                    if self.keyboard_matrix[row][col] {
+                        result &= !(1 << col);  // Pull bit low if key pressed
+                    }
+                }
+            }
+        }
+
+        // Write result to 0xFF08
+        self.ram[0xFF08] = result;
     }
 
     fn p4_joystick(&mut self, _port: u8) {

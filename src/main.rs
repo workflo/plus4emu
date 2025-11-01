@@ -61,6 +61,9 @@ async fn main() {
             break;
         }
 
+        // Update emulator keyboard state
+        emulator.update_keyboard(keyboard.matrix);
+
         // Emulation loop - execute instructions until we've done enough for one frame
         accumulated_cycles = 0;
         while accumulated_cycles < cycles_per_frame {
