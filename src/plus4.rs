@@ -236,6 +236,10 @@ impl Plus4 {
         self.flash_on = false;
         self.flash_counter = 0;
         self.raster_line = 0;
+
+        // Initialize BASIC memory pointers (Plus/4 specific)
+        // These should be set by ROM, but let's log what they become
+        println!("Reset vector: 0x{:04X}", self.cpu.pc);
     }
 
     // Input placeholders
@@ -958,6 +962,38 @@ impl Plus4 {
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
             }
+            0x06 => { // ASL zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = self.cpu.do_asl(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0x16 => { // ASL zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_asl(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x0E => { // ASL absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = self.cpu.do_asl(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0x1E => { // ASL absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_asl(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
+            }
             0x4A => { // LSR accumulator
                 self.cpu.acc = self.cpu.do_lsr(self.cpu.acc);
                 self.cpu.incr_pc(1);
@@ -1000,10 +1036,74 @@ impl Plus4 {
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
             }
+            0x26 => { // ROL zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = self.cpu.do_rol(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0x36 => { // ROL zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_rol(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x2E => { // ROL absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = self.cpu.do_rol(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0x3E => { // ROL absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_rol(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
+            }
             0x6A => { // ROR accumulator
                 self.cpu.acc = self.cpu.do_ror(self.cpu.acc);
                 self.cpu.incr_pc(1);
                 self.clock_ticks = 2;
+            }
+            0x66 => { // ROR zeropage
+                let addr = self.get_addr_zeropage();
+                let value = self.peek(addr);
+                let result = self.cpu.do_ror(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 5;
+            }
+            0x76 => { // ROR zeropage,X
+                let addr = self.get_addr_zeropage_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_ror(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(2);
+                self.clock_ticks = 6;
+            }
+            0x6E => { // ROR absolute
+                let addr = self.get_addr_absolute();
+                let value = self.peek(addr);
+                let result = self.cpu.do_ror(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 6;
+            }
+            0x7E => { // ROR absolute,X
+                let addr = self.get_addr_absolute_x();
+                let value = self.peek(addr);
+                let result = self.cpu.do_ror(value);
+                self.poke(addr, result);
+                self.cpu.incr_pc(3);
+                self.clock_ticks = 7;
             }
 
             // INC - Increment Memory
@@ -1354,5 +1454,105 @@ impl Plus4 {
             self.clock_counter -= TICKS_PER_RASTER_LINE;
             self.render_raster_line();
         }
+    }
+
+    // Debug function to check BASIC memory pointers
+    pub fn debug_basic_pointers(&self) {
+        println!("\n=== BASIC Memory Pointers ===");
+
+        // Plus/4 BASIC pointers (different from C64!)
+        let txttab = self.ram[0x2B] as u16 | ((self.ram[0x2C] as u16) << 8); // Start of BASIC text
+        let vartab = self.ram[0x2D] as u16 | ((self.ram[0x2E] as u16) << 8); // Start of variables
+        let arytab = self.ram[0x2F] as u16 | ((self.ram[0x30] as u16) << 8); // Start of arrays
+        let strend = self.ram[0x31] as u16 | ((self.ram[0x32] as u16) << 8); // End of arrays
+        let fretop = self.ram[0x33] as u16 | ((self.ram[0x34] as u16) << 8); // Top of string space
+        let memsiz = self.ram[0x37] as u16 | ((self.ram[0x38] as u16) << 8); // Top of memory
+
+        println!("TXTTAB (0x2B-2C): 0x{:04X} (Start of BASIC text)", txttab);
+        println!("VARTAB (0x2D-2E): 0x{:04X} (Start of variables)", vartab);
+        println!("ARYTAB (0x2F-30): 0x{:04X} (Start of arrays)", arytab);
+        println!("STREND (0x31-32): 0x{:04X} (End of arrays)", strend);
+        println!("FRETOP (0x33-34): 0x{:04X} (Top of string space)", fretop);
+        println!("MEMSIZ (0x37-38): 0x{:04X} (Top of memory)", memsiz);
+
+        let free_bytes = if memsiz > strend {
+            memsiz - strend
+        } else {
+            0
+        };
+
+        println!("\nCalculated free bytes: {} (should be 60123)", free_bytes);
+
+        // Search for "COMMODORE" string in screen memory
+        println!("\nSearching for 'COMMODORE' in screen memory (0x0C00-0x0FE7)...");
+        let commodore_petscii = [0x03, 0x0F, 0x0D, 0x0D, 0x0F, 0x04, 0x0F, 0x12, 0x05]; // "COMMODORE" in PETSCII
+        let mut found = false;
+        for addr in 0x0C00..0x0FE8 {
+            if self.ram[addr] == commodore_petscii[0] {
+                let mut match_found = true;
+                for (i, &ch) in commodore_petscii.iter().enumerate() {
+                    if self.ram[addr + i] != ch {
+                        match_found = false;
+                        break;
+                    }
+                }
+                if match_found {
+                    println!("Found 'COMMODORE' at address: 0x{:04X}", addr);
+                    let line_num = (addr - 0x0C00) / 40;
+                    let col_num = (addr - 0x0C00) % 40;
+                    println!("Line: {}, Column: {}", line_num, col_num);
+
+                    // Show the entire line
+                    let line_start = 0x0C00 + line_num * 40;
+                    print!("Full line content: ");
+                    for i in 0..40 {
+                        let ch = self.ram[line_start + i];
+                        if ch >= 32 && ch < 128 {
+                            print!("{}", ch as char);
+                        } else if ch < 26 {
+                            print!("{}", (ch + 0x40) as char); // Convert PETSCII to ASCII
+                        } else {
+                            print!(".");
+                        }
+                    }
+                    println!();
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if !found {
+            println!("'COMMODORE' string not found in screen memory!");
+        }
+
+        // Always show first 3 lines as hex and text
+        println!("\nFirst 3 lines of screen memory:");
+        for line in 0..3 {
+            let line_start = 0x0C00 + line * 40;
+            print!("Line {}: ", line);
+            for i in 0..40 {
+                let ch = self.ram[line_start + i];
+                if ch == 0x20 {
+                    print!(" ");
+                } else if ch < 26 {
+                    print!("{}", (ch + 0x40) as char); // PETSCII to ASCII
+                } else if ch >= 32 && ch < 128 {
+                    print!("{}", ch as char);
+                } else {
+                    print!("?");
+                }
+            }
+            println!();
+        }
+
+        // Show hex bytes where the number should be (around "BYTES FREE")
+        println!("\nHex dump of line 1 (where byte count is):");
+        let line1_start = 0x0C00 + 40;  // Second line
+        for i in 0..40 {
+            print!("{:02X} ", self.ram[line1_start + i]);
+        }
+        println!();
+
+        println!("==============================\n");
     }
 }

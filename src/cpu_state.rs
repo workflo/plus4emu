@@ -78,8 +78,30 @@ impl CpuState {
         let old_acc = self.acc;
 
         if self.d {
-            // Decimal mode not implemented yet
-            panic!("Decimal mode ADC not implemented");
+            // Decimal mode (BCD)
+            let carry_in = if self.c { 1 } else { 0 };
+
+            // Add low nibbles
+            let mut low = (self.acc & 0x0F) + (data & 0x0F) + carry_in;
+            if low > 0x09 {
+                low += 0x06;
+            }
+
+            // Add high nibbles
+            let mut high = (self.acc >> 4) + (data >> 4) + if low > 0x0F { 1 } else { 0 };
+
+            // Set flags based on binary result for compatibility
+            let bin_result = (self.acc as u16) + (data as u16) + (carry_in as u16);
+            self.z = (bin_result & 0xFF) == 0;
+            self.n = (bin_result & 0x80) != 0;
+            self.v = ((!(old_acc ^ data)) & (old_acc ^ bin_result as u8) & 0x80) != 0;
+
+            if high > 0x09 {
+                high += 0x06;
+            }
+
+            self.c = high > 0x0F;
+            self.acc = ((high << 4) | (low & 0x0F)) & 0xFF;
         } else {
             // Binary mode
             let raw = data as u16 + self.acc as u16 + if self.c { 1 } else { 0 };
@@ -89,16 +111,8 @@ impl CpuState {
             self.neg_flag(self.acc);
             self.zero_flag(self.acc);
 
-            self.v = false;
-            if self.n && (self.acc & 0x80) != 0 && (data & 0x80) == 0 && (old_acc & 0x80) == 0 {
-                self.v = true;
-            }
-            if self.n && (self.acc & 0x80) == 0 && (data & 0x80) != 0 && (old_acc & 0x80) != 0 {
-                self.v = true;
-            }
-            if !self.n && (self.acc & 0x80) == 0 && (data & 0x80) != 0 && (old_acc & 0x80) != 0 {
-                self.v = true;
-            }
+            // Overflow flag: set if sign bit is incorrect
+            self.v = ((!(old_acc ^ data)) & (old_acc ^ self.acc) & 0x80) != 0;
         }
     }
 
@@ -219,21 +233,13 @@ impl CpuState {
             let raw = self.acc as i32 - data as i32 - if self.c { 0 } else { 1 };
 
             self.acc = raw as u8;
-            self.c = raw < 0x100;
+            self.c = raw >= 0;  // Carry set if no borrow occurred
 
             self.neg_flag(self.acc);
             self.zero_flag(self.acc);
 
-            self.v = false;
-            if !self.n && (self.acc & 0x80) != 0 && (data & 0x80) != 0 && (old_acc & 0x80) == 0 {
-                self.v = true;
-            }
-            if !self.n && (self.acc & 0x80) == 0 && (data & 0x80) == 0 && (old_acc & 0x80) != 0 {
-                self.v = true;
-            }
-            if self.n && (self.acc & 0x80) != 0 && (data & 0x80) != 0 && (old_acc & 0x80) == 0 {
-                self.v = true;
-            }
+            // Overflow flag: set if sign bit is incorrect
+            self.v = ((old_acc ^ data) & (old_acc ^ self.acc) & 0x80) != 0;
         }
     }
 
