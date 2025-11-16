@@ -302,7 +302,7 @@ impl Plus4 {
             }
         }
 
-        println!("Keyboard read: latch=0x{:02X}, latch_inverted={:08b} result=0x{:02X}", combined_latch, latch_inverted, result ^ 0xff);
+        // println!("Keyboard read: latch=0x{:02X}, latch_inverted={:08b} result=0x{:02X}", combined_latch, latch_inverted, result ^ 0xff);
 
         // Write result to 0xFF08
         self.ram[0xFF08] = result ^ 0xff;
