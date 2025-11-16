@@ -4,4 +4,5 @@
 /.project
 /.classpath
 /.settings
-
+/target/
+.claude/settings.local.json

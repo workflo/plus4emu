@@ -73,59 +73,30 @@ public class CpuState
         short oldAcc = acc;
 
         if (d) {
-            // Decimal Mode:
-//            short akku;
-//            int az1,   // Akku-Ziffer 1
-//            dz1,   // Daten-Ziffer 1
-//            u1,
-//            az2,
-//            dz2;
-//            boolean u2 = false;
-//
-//            akku = cpu.acc;
-//
-//            // 1. Stelle addieren
-//            az1 = (cpu.acc & 0x0f);
-//            dz1 = (data & 0x0f);
-//            u1 = 0;
-//            az2 = ((cpu.acc & 0xf0) >> 4);
-//            dz2 =  ((data & 0xf0) >> 4);
-//            if (az1 + dz1 < 20) {
-//                cpu.acc = (short) (((az1 + dz1) % 10) & 0xff);
-//                if (az1 + dz1 > 9)
-//                    u1 = 1;
-//            } else {
-//                cpu.acc = (short) (((az1 + dz1) -10) & 0xff);
-//                u1 = 1;
-//            }
-//
-//            // 2. Stelle addieren
-//            if (az2 + dz2 + u1 < 20) {
-//                cpu.acc += ((az2 + dz2 + u1) % 10) << 4;
-//                if (az2 + dz2 + u1 > 9)
-//                    u2 = true;
-//            } else {
-//                //a = (az2 + dz2) -10;
-//                u2 = true;
-//            }
-//            NegFlag(cpu.acc);
-//            ZeroFlag(cpu.acc);
-//            if (u2) {
-//                cpu.c = true;
-//                cpu.z = false;
-//                cpu.n = true;
-//            }
-//            cpu.v = false;
-//            if ((cpu.acc & 0x80)>0  && (data & 0x80)==0 && (akku & 0x80)==0)
-//                cpu.v = true;
-//            if ((cpu.acc & 0x80)==0 && (data & 0x80)>0 && (akku & 0x80)>0)
-//                cpu.v = true;
-//
-//            if (cpu.c && cpu.acc >= 0x60)
-//                cpu.n = false;
-//            if (u2 && cpu.acc == 0x66)
-//                cpu.z = true;
-            throw new UnsupportedOperationException();
+            // Decimal Mode (BCD)
+            final int carryIn = c ? 1 : 0;
+
+            // Add low nibbles
+            int low = (acc & 0x0F) + (data & 0x0F) + carryIn;
+            if (low > 0x09) {
+                low += 0x06;
+            }
+
+            // Add high nibbles
+            int high = (acc >> 4) + (data >> 4) + (low > 0x0F ? 1 : 0);
+
+            // Set flags based on binary result for compatibility
+            final int binResult = acc + data + carryIn;
+            z = ((binResult & 0xFF) == 0);
+            n = ((binResult & 0x80) != 0);
+            v = (((~(oldAcc ^ data)) & (oldAcc ^ binResult) & 0x80) != 0);
+
+            if (high > 0x09) {
+                high += 0x06;
+            }
+
+            c = (high > 0x0F);
+            acc = toByte(((high << 4) | (low & 0x0F)) & 0xFF);
         } else {
             // Binary Mode:
             final int raw = data + acc + (c ? 1 : 0);
@@ -135,10 +106,8 @@ public class CpuState
             NegFlag(acc);
             ZeroFlag(acc);
 
-            v = false;
-            if ( n && (acc & 0x80)>0  && (data & 0x80)==0 && (oldAcc & 0x80)==0) v = true;
-            if ( n && (acc & 0x80)==0 && (data & 0x80)>0  && (oldAcc & 0x80)>0)  v = true;
-            if (!n && (acc & 0x80)==0 && (data & 0x80)>0  && (oldAcc & 0x80)>0)  v = true;
+            // Overflow flag: set if sign bit is incorrect
+            v = (((~(oldAcc ^ data)) & (oldAcc ^ acc) & 0x80) != 0);
         }
     }
     
@@ -258,15 +227,13 @@ public class CpuState
             final int raw = acc - data - (c ? 0 : 1);
 
             acc = toByte(raw);
-            c = (raw < 0x100);
+            c = (raw >= 0);  // Carry set if no borrow occurred
 
             NegFlag(acc);
             ZeroFlag(acc);
 
-            v = false;
-            if (!n && (acc & 0x80)>0  && (data & 0x80)>0  && (oldAcc & 0x80)==0) v = true;
-            if (!n && (acc & 0x80)==0 && (data & 0x80)==0 && (oldAcc & 0x80)>0 ) v = true;
-            if ( n && (acc & 0x80)>0  && (data & 0x80)>0  && (oldAcc & 0x80)==0) v = true;
+            // Overflow flag: set if sign bit is incorrect
+            v = (((oldAcc ^ data) & (oldAcc ^ acc) & 0x80) != 0);
         }
     }
 

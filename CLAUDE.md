@@ -1,0 +1,177 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**Plus4Emu** is a Commodore Plus/4 computer emulator written in **Rust** using the **macroquad** game framework. It emulates the complete system including:
+- 6510 CPU (6502-compatible)
+- TED video chip (320x200 pixels, 128-color palette)
+- 64KB RAM + 32KB system ROM + 32KB expansion ROM
+- Keyboard matrix and joystick input
+- Timer system and interrupt handling
+
+**License**: GNU GPL v2
+**Author**: Florian Wolff (2009)
+**Rust Port**: 2025
+
+## Build and Run Commands
+
+### Using Cargo
+```bash
+# Build the project (debug mode)
+cargo build
+
+# Build the project (release mode, optimized)
+cargo build --release
+
+# Run the emulator (debug mode)
+cargo run
+
+# Run the emulator (release mode, optimized)
+cargo run --release
+
+# Clean build artifacts
+cargo clean
+
+# Check code without building
+cargo check
+
+# Run tests
+cargo test
+```
+
+The compiled binary is created in `target/debug/plus4emu` (debug) or `target/release/plus4emu` (release).
+
+## Architecture Overview
+
+### Core Emulation Loop
+The emulator follows a classic fetch-decode-execute cycle:
+
+1. **main.rs** - Entry point using macroquad:
+   - Window configuration (960x600, 3x scaled)
+   - ROM loading via `include_bytes!` macro (embeds ROM files at compile time)
+   - Main game loop running async with `#[macroquad::main]` attribute
+   - Frame-based execution (60 FPS target)
+   - Keyboard input handling and screen rendering
+
+2. **plus4.rs** - Main emulator engine (`Plus4` struct):
+   - **CPU Execution**: `execute_instruction()` implements 200+ 6510/6502 opcodes
+   - **Memory Management**:
+     - `peek(addr)` / `poke(addr, value)` with ROM/RAM banking
+     - Memory map: 0x0000-0xFFFF RAM, 0x8000+ ROM (bankable)
+     - I/O registers: 0xFD00-0xFF3F (TED chip, keyboard, joystick)
+   - **Timing**: 885 kHz clock, 114 ticks per raster line
+   - **Interrupts**: Timer A/B/C and raster interrupts
+   - **Video Rendering**: `render_raster_line()` generates pixel data for each of 312 raster lines
+   - **State**: Contains `ram: [u8; 0x10000]`, ROM buffers, and `pixels` array
+
+3. **cpu_state.rs** - CPU registers and operations (`CpuState` struct):
+   - Registers: `pc` (program counter), `acc` (accumulator), `xr`, `yr`, `sp` (stack pointer)
+   - Status flags: `c` (Carry), `z` (Zero), `n` (Negative), `v` (Overflow), `b` (Break), `d` (Decimal), `i` (Interrupt)
+   - CPU operations: `do_adc()`, `do_sbc()`, `do_and()`, `do_eor()`, `do_rol()`, etc.
+
+4. **screen.rs** - Video output (`Screen` struct):
+   - macroquad texture-based rendering
+   - 320x200 pixel buffer, scaled 3x
+   - 128-color palette from ROM data
+   - `update(&pixels)` converts pixel buffer to texture
+   - `draw(scale)` renders texture to screen
+
+5. **keyboard.rs** - Keyboard input (`KeyboardMatrix` struct):
+   - 8x8 keyboard matrix emulation
+   - Maps modern keyboard to Commodore Plus/4 key layout
+   - Row/column matrix scanning
+
+### Memory-Mapped I/O
+Key registers in the 0xFF00-0xFF3F range:
+- **0xFF00**: Interrupt status/control
+- **0xFF06**: Screen control register (bitmap/text mode)
+- **0xFF08**: Keyboard/joystick data
+- **0xFF09**: Interrupt enable mask
+- **0xFF12-0xFF1E**: Character set, color, and screen memory pointers
+- **0xFD30**: Keyboard matrix row select
+- **0xFExx/0xFFxx**: ROM banking control
+
+### Video Modes
+The emulator supports three display modes:
+- **Text Mode** (40x25 characters): Uses character ROM and color RAM
+- **Hi-Res Bitmap**: Direct pixel manipulation (1 bit per pixel)
+- **Multi-Color Mode**: 4-color mode (partially implemented)
+
+Mode selection via bit 5 of register 0xFF06.
+
+### ROM Files
+ROM binaries are embedded at compile time using the `include_bytes!` macro:
+- `roms/rom.bin` - 32KB system ROM
+- `roms/3plus1.bin` - 32KB 3Plus1 expansion ROM
+
+These are compiled directly into the binary, eliminating runtime file loading.
+
+### Keyboard Input
+Keyboard matrix is 8x8, accessed via:
+- Write row selector to 0xFD30
+- Read column data from 0xFF08
+- Joystick ports selected via 0xFA (port 1) or 0xFD (port 2)
+
+Keyboard handling uses macroquad's `is_key_down()` and `is_key_pressed()` functions to map modern keyboard input to the Plus/4's keyboard matrix.
+
+## Code Organization
+
+```
+plus4emu/
+├── Cargo.toml             # Project manifest and dependencies
+├── src/
+│   ├── main.rs            # Entry point with macroquad game loop
+│   ├── plus4.rs           # Core emulator (CPU, memory, I/O, rendering)
+│   ├── cpu_state.rs       # CPU registers and state operations
+│   ├── screen.rs          # Video output with macroquad texture rendering
+│   └── keyboard.rs        # Keyboard matrix emulation
+├── roms/
+│   ├── rom.bin            # 32KB system ROM
+│   └── 3plus1.bin         # 32KB expansion ROM
+└── target/                # Build output directory (generated by Cargo)
+```
+
+## Key Implementation Details
+
+### Timing Constants
+- Clock frequency: 885 kHz
+- Refresh rate: 57 Hz (312 raster lines)
+- Ticks per raster line: 114
+- Visible screen: 200 lines starting at line 3
+
+### CPU Emulation
+All 6510 opcodes are implemented using Rust's `match` expressions in `plus4.rs`:
+- Legal opcodes (200+ variants)
+- Addressing modes: Immediate, Zero Page, Absolute, Indexed, Indirect
+- Each instruction updates CPU state (registers, flags) and consumes clock cycles
+- Strong type safety with Rust's ownership system prevents memory issues
+
+### Rendering Pipeline
+1. Main async loop executes CPU instructions in frame-based batches
+2. Emulator's `step()` method executes one instruction and updates `clock_ticks`
+3. After 114 clock ticks, `render_raster_line()` is called
+4. Pixel data for current raster line is generated and stored in `pixels` array
+5. `screen.update(&pixels)` converts the entire frame buffer to a macroquad texture
+6. `screen.draw(scale)` renders the texture to the window
+7. Process repeats at 60 FPS using macroquad's `next_frame().await`
+
+## Common Development Tasks
+
+When modifying the emulator:
+- **CPU changes**: Edit `execute_instruction()` in `plus4.rs` and methods in `cpu_state.rs`
+- **Video changes**: Edit `render_raster_line()` in `plus4.rs` and `screen.rs`
+- **I/O changes**: Edit `peek()` and `poke()` methods in `plus4.rs`
+- **Keyboard mapping**: Edit `keyboard.rs` to map keys to the 8x8 matrix
+- **Build changes**: Edit `Cargo.toml` for dependencies and project metadata
+- **Performance**: Use `cargo build --release` for optimized builds
+
+## Rust-Specific Notes
+
+- **Memory Safety**: Rust's ownership system prevents common emulation bugs like buffer overflows
+- **Performance**: Release builds with `--release` flag are highly optimized
+- **Dependencies**: macroquad provides cross-platform graphics and input handling
+- **Async Runtime**: Main loop uses macroquad's async runtime for consistent frame timing
+- **No Garbage Collection**: Deterministic performance without GC pauses
+- **Zero-cost Abstractions**: High-level code compiles to efficient machine code
