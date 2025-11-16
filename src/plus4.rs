@@ -1424,15 +1424,27 @@ impl Plus4 {
         {
             let line = (self.raster_line - FIRST_SCREEN_LINE as u32) as usize;
 
-            // Check if we're in bitmap mode (bit 5 of 0xFF06)
-            let bitmap_mode = (self.ram[0xFF06] & 32) != 0;
+            // Check if screen is on (bit 4 of 0xFF06)
+            let screen_on = (self.ram[0xFF06] & 16) != 0;
 
-            if bitmap_mode {
-                // Bitmap mode rendering (Hi-Res graphics)
-                self.render_bitmap_line(line);
+            if screen_on {
+                // Check if we're in bitmap mode (bit 5 of 0xFF06)
+                let hires_mode = (self.ram[0xFF06] & 32) != 0;
+                // let multicolor_mode = (self.ram[0xFF06] & 64) != 0;
+
+                if hires_mode {
+                    // Bitmap mode rendering (Hi-Res graphics)
+                    self.render_bitmap_line(line);
+                } else {
+                    // Text mode rendering (40x25 characters, 8x8 pixels each)
+                    self.render_text_line(line);
+                }
             } else {
-                // Text mode rendering (40x25 characters, 8x8 pixels each)
-                self.render_text_line(line);
+                // Screen is blanked - fill with frame color from register 0xFF19
+                let frame_color = self.ram[0xFF19] & 0x7F;
+                for x in 0..SCREEN_WIDTH {
+                    self.pixels[line][x] = frame_color;
+                }
             }
         }
 
@@ -1444,28 +1456,41 @@ impl Plus4 {
         // Raster interrupt handling
         // Raster interrupt line is 9-bit: bit 0 of 0xFF0A (high bit) + 0xFF0B (low byte)
         let raster_interrupt_line = (((self.ram[0xFF0A] & 1) as u32) << 8) + self.ram[0xFF0B] as u32;
+        // println!("Raster Line: {}, Interrupt Line: {}, Register 0xFF06: 0x{:02X}", self.raster_line, raster_interrupt_line, self.ram[0xFF06]);
 
         if self.raster_line == raster_interrupt_line {
             // Set raster interrupt bit (bit 1) + master interrupt flag (bit 7)
             self.ram[0xFF09] |= 2 + 128;
 
+            // println!("-------> Raster Interrupt Triggered at line {}", self.raster_line);
             // Check if interrupt should trigger: interrupt flag clear AND raster interrupt enabled in mask
             if !self.cpu.i && (self.ram[0xFF0A] & 2) != 0 {
-                // Push PC to stack (high byte first, then low byte)
-                self.push((self.cpu.pc >> 8) as u8);
-                self.push((self.cpu.pc & 0xFF) as u8);
-
-                // Push processor flags
+                self.push_word(self.cpu.pc);
                 self.push(self.get_flags());
 
-                // Set interrupt disable flag
                 self.cpu.i = true;
 
                 // Jump to IRQ vector at 0xFFFE/0xFFFF
+                // let irq_vec = self.rom[0xFFFE - 0x8000] as u16 | ((self.rom[0xFFFF - 0x8000] as u16) << 8);
                 let irq_lo = self.peek(0xFFFE) as u16;
                 let irq_hi = self.peek(0xFFFF) as u16;
+                // self.cpu.pc = irq_vec;
                 self.cpu.pc = irq_lo | (irq_hi << 8);
+                // let irq_lo = self.rom[0xFFFE - 0x8000] as u16;
+                // let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
+                // self.cpu.pc = irq_lo | (irq_hi << 8);
             }
+
+        // if (rasterLine == rasterInterruptLine) {
+        //     ram[0xff09] |= 2+128;
+
+        //     if (!cpu.i && (ram[0xff0a] & 2)  > 0) {
+        //         Dush(cpu.pc);                  // Register sichern
+        //         Push(GetFlags());
+        //         cpu.i = true;                     // IRQs abschalten
+        //         cpu.pc = (rom[0xffff - 0x8000] << 8) + rom[0xfffe - 0x8000];
+        //     }
+        // }
         }
     }
 
@@ -1540,7 +1565,7 @@ impl Plus4 {
 
         // Get cursor position from TED registers 0xFF0C (high) and 0xFF0D (low)
         let cursor_address = ((self.ram[0xFF0C] as usize) << 8) | (self.ram[0xFF0D] as usize);
-        let bitmap_mode = (self.ram[0xFF06] & 32) != 0;
+        let hires_mode = (self.ram[0xFF06] & 32) != 0;
 
         for col in 0..40 {
             let screen_offset = col + char_row * 40;
@@ -1550,7 +1575,7 @@ impl Plus4 {
             let mut char_code = self.ram[char_addr] as usize;
 
             // Check if this is the cursor position and flash is on
-            let is_cursor_char = cursor_address == screen_offset && self.flash_on && !bitmap_mode;
+            let is_cursor_char = cursor_address == screen_offset && self.flash_on && !hires_mode;
             if is_cursor_char {
                 // Invert character code by XORing with 0x80
                 char_code ^= 0x80;
@@ -1683,21 +1708,19 @@ impl Plus4 {
                 // Check if interrupt should trigger
                 // Interrupt fires if: interrupt flag is clear AND interrupt is enabled in mask
                 if !self.cpu.i && (self.ram[0xFF0A] & bit) != 0 {
-                    // Push PC to stack (high byte first, then low byte)
-                    self.push((self.cpu.pc >> 8) as u8);
-                    self.push((self.cpu.pc & 0xFF) as u8);
-
-                    // Push processor flags
+                    self.push_word(self.cpu.pc);
                     self.push(self.get_flags());
 
-                    // Set interrupt disable flag
                     self.cpu.i = true;
 
                     // Jump to IRQ vector at 0xFFFE/0xFFFF
-                    let irq_lo = self.rom[0xFFFE - 0x8000] as u16;
-                    let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
-                    self.cpu.pc = irq_lo | (irq_hi << 8);
-
+                    // let irq_lo = self.rom[0xFFFE - 0x8000] as u16;
+                    // let irq_hi = self.rom[0xFFFF - 0x8000] as u16;
+                    // self.cpu.pc = irq_lo | (irq_hi << 8);
+                let irq_lo = self.peek(0xFFFE) as u16;
+                let irq_hi = self.peek(0xFFFF) as u16;
+                // self.cpu.pc = irq_vec;
+                self.cpu.pc = irq_lo | (irq_hi << 8);
                     // println!("Timer {} IRQ triggered, jumping to {:04X}", timer_idx + 1, self.cpu.pc);
                 }
             }

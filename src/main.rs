@@ -183,23 +183,23 @@ async fn main() {
             WHITE,
         );
 
-        if prg_loaded {
-            draw_text(
-                "PRG Loaded",
-                10.0,
-                60.0,
-                20.0,
-                GREEN,
-            );
-        } else {
-            draw_text(
-                "Press F5 to load PRG",
-                10.0,
-                60.0,
-                20.0,
-                YELLOW,
-            );
-        }
+        // if prg_loaded {
+        //     draw_text(
+        //         "PRG Loaded",
+        //         10.0,
+        //         60.0,
+        //         20.0,
+        //         GREEN,
+        //     );
+        // } else {
+        //     draw_text(
+        //         "Press F12 to load PRG",
+        //         10.0,
+        //         60.0,
+        //         20.0,
+        //         YELLOW,
+        //     );
+        // }
 
         next_frame().await;
     }
