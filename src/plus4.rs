@@ -310,7 +310,7 @@ impl Plus4 {
 
     fn p4_joystick(&mut self, _port: u8) {
         // Joystick implementation - placeholder
-        self.ram[0xFF08] = 0xFF;
+        // self.ram[0xFF08] = 0xFF;
     }
 
     // Helper: Get address based on addressing mode
