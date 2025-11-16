@@ -1662,4 +1662,75 @@ impl Plus4 {
             self.render_raster_line();
         }
     }
+
+    // PRG file loading
+    pub fn load_prg(&mut self, prg: &crate::prg_loader::PrgFile) {
+        println!("Loading PRG: ${:04X} ({} bytes)", prg.load_address, prg.data.len());
+
+        // Load data into memory
+        let mut addr = prg.load_address;
+        for &byte in &prg.data {
+            self.poke(addr, byte);
+            addr = addr.wrapping_add(1);
+        }
+
+        // If BASIC program, set up BASIC pointers
+        if prg.is_basic_program() {
+            self.setup_basic_pointers(prg.end_address());
+        }
+
+        println!("PRG loaded successfully at ${:04X}-${:04X}",
+                 prg.load_address, prg.end_address());
+    }
+
+    // Setup BASIC pointers after loading a BASIC program
+    fn setup_basic_pointers(&mut self, end_address: u16) {
+        // Set BASIC end pointer
+        // $9D = 157: Start of BASIC variables
+        // $2B-$2C: Start of variables pointer
+        self.poke(0x2B, (end_address & 0xFF) as u8);
+        self.poke(0x2C, ((end_address >> 8) & 0xFF) as u8);
+
+        // $2D-$2E: Start of arrays pointer
+        self.poke(0x2D, (end_address & 0xFF) as u8);
+        self.poke(0x2E, ((end_address >> 8) & 0xFF) as u8);
+
+        // $2F-$30: End of arrays pointer
+        self.poke(0x2F, (end_address & 0xFF) as u8);
+        self.poke(0x30, ((end_address >> 8) & 0xFF) as u8);
+
+        println!("BASIC pointers set to ${:04X}", end_address);
+    }
+
+    // Inject RUN command into keyboard buffer for BASIC programs
+    pub fn inject_run_command(&mut self) {
+        println!("Injecting RUN command...");
+
+        // Keyboard buffer starts at $0527
+        // Buffer length at $EF
+        self.poke(0xEF, 4);        // Buffer length
+        self.poke(0x0527, 0x52);   // 'R'
+        self.poke(0x0528, 0x55);   // 'U'
+        self.poke(0x0529, 0x4E);   // 'N'
+        self.poke(0x052A, 0x0D);   // RETURN
+    }
+
+    // Execute machine code at specific address (SYS equivalent)
+    pub fn execute_sys(&mut self, address: u16) {
+        println!("Executing SYS ${:04X}", address);
+        self.cpu.pc = address;
+    }
+
+    // Load and auto-run a PRG file
+    pub fn load_and_run_prg(&mut self, prg: &crate::prg_loader::PrgFile) {
+        self.load_prg(prg);
+
+        if prg.is_basic_program() {
+            // For BASIC programs, inject RUN command
+            self.inject_run_command();
+        } else {
+            // For machine code, execute directly
+            self.execute_sys(prg.load_address);
+        }
+    }
 }
