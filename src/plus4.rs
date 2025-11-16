@@ -1428,10 +1428,8 @@ impl Plus4 {
             let bitmap_mode = (self.ram[0xFF06] & 32) != 0;
 
             if bitmap_mode {
-                // Bitmap mode rendering (not implemented yet)
-                for x in 0..SCREEN_WIDTH {
-                    self.pixels[line][x] = 0; // Black for now
-                }
+                // Bitmap mode rendering (Hi-Res graphics)
+                self.render_bitmap_line(line);
             } else {
                 // Text mode rendering (40x25 characters, 8x8 pixels each)
                 self.render_text_line(line);
@@ -1467,6 +1465,55 @@ impl Plus4 {
                 let irq_lo = self.peek(0xFFFE) as u16;
                 let irq_hi = self.peek(0xFFFF) as u16;
                 self.cpu.pc = irq_lo | (irq_hi << 8);
+            }
+        }
+    }
+
+    // Render one line of bitmap mode (Hi-Res graphics: 320x200 pixels)
+    fn render_bitmap_line(&mut self, line: usize) {
+        // Background color from TED register 0xFF15
+        let bg_color = self.ram[0xFF15] & 0x7F;
+
+        // Bitmap base address from register 0xFF12 (bits 3-7)
+        // Formula: (ram[0xFF12] >> 3) * 0x2000
+        let hires_base = ((self.ram[0xFF12] >> 3) as usize) * 0x2000;
+
+        // Bitmap layout in Plus/4:
+        // The screen is divided into 40x25 character blocks (8x8 pixels each)
+        // For each pixel at position (line, x):
+        // - Calculate which 8x8 block it belongs to
+        // - Read the corresponding byte from bitmap memory
+        // - Check the specific bit for this pixel
+        // - If bit is 1: use foreground color from color RAM at 0x1800
+        // - If bit is 0: use background color from 0xFF15
+
+        for x in 0..SCREEN_WIDTH {
+            // Calculate bitmap memory address for this pixel
+            // Formula: hiresBase + (pixelY/8)*320 + (pixelY & 7) + (x/8)*8
+            let block_row = line / 8;           // Which row of 8x8 blocks (0-24)
+            let pixel_in_block_y = line & 7;    // Which pixel row within the block (0-7)
+            let block_col = x / 8;              // Which column of 8x8 blocks (0-39)
+            let pixel_in_block_x = x & 7;       // Which pixel column within the block (0-7)
+
+            // Bitmap address calculation
+            let bitmap_addr = hires_base + block_row * 320 + pixel_in_block_y + block_col * 8;
+
+            // Read the bitmap byte (wraps at 64KB boundary)
+            let bitmap_byte = self.ram[bitmap_addr & 0xFFFF];
+
+            // Check if the specific bit is set (bit 7 is leftmost pixel, bit 0 is rightmost)
+            let bit_mask = 1 << (7 - pixel_in_block_x);
+            let pixel_set = (bitmap_byte & bit_mask) != 0;
+
+            if pixel_set {
+                // Pixel is set: use foreground color from color RAM
+                // Color RAM address: 0x1800 + (pixelY/8)*40 + (x/8)
+                let color_addr = 0x1800 + block_row * 40 + block_col;
+                let color = self.ram[color_addr] & 0x7F;
+                self.pixels[line][x] = color;
+            } else {
+                // Pixel is not set: use background color
+                self.pixels[line][x] = bg_color;
             }
         }
     }
