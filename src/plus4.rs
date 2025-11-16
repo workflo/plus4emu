@@ -1675,9 +1675,9 @@ impl Plus4 {
         }
 
         // If BASIC program, set up BASIC pointers
-        if prg.is_basic_program() {
-            self.setup_basic_pointers(prg.end_address());
-        }
+        // if prg.is_basic_program() {
+        //     self.setup_basic_pointers(prg.end_address());
+        // }
 
         println!("PRG loaded successfully at ${:04X}-${:04X}",
                  prg.load_address, prg.end_address());
@@ -1725,12 +1725,12 @@ impl Plus4 {
     pub fn load_and_run_prg(&mut self, prg: &crate::prg_loader::PrgFile) {
         self.load_prg(prg);
 
-        if prg.is_basic_program() {
-            // For BASIC programs, inject RUN command
-            self.inject_run_command();
-        } else {
-            // For machine code, execute directly
-            self.execute_sys(prg.load_address);
-        }
+        // if prg.is_basic_program() {
+        //     // For BASIC programs, inject RUN command
+        //     self.inject_run_command();
+        // } else {
+        //     // For machine code, execute directly
+        //     self.execute_sys(prg.load_address);
+        // }
     }
 }

@@ -99,7 +99,7 @@ async fn main() {
 
     println!("Plus/4 Emulator started!");
     println!("Press ESC to exit");
-    println!("Press F5 to load test.prg");
+    println!("Press F12 to load test.prg");
 
     loop {
         // Input handling
@@ -112,10 +112,10 @@ async fn main() {
         // Update emulator keyboard state
         emulator.update_keyboard(keyboard.matrix);
 
-        // Magic hotkey F5: Load test PRG file
-        if is_key_pressed(KeyCode::F5) && !prg_loaded {
+        // Magic hotkey F12: Load test PRG file
+        if is_key_pressed(KeyCode::F12) && !prg_loaded {
             println!("\n=== Loading test.prg ===");
-            match PrgFile::load_from_file("test.prg") {
+            match PrgFile::load_from_file("prg\\COBRA.PRG") {
                 Ok(prg) => {
                     println!("PRG file loaded: ${:04X} - ${:04X}",
                              prg.load_address, prg.end_address());
@@ -138,7 +138,7 @@ async fn main() {
         }
 
         // R key: Reset emulator
-        if is_key_pressed(KeyCode::R) {
+        if is_key_pressed(KeyCode::F11) {
             println!("Resetting emulator...");
             emulator.hard_reset();
             prg_loaded = false;
