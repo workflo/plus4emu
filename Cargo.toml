@@ -8,6 +8,7 @@ description = "Commodore Plus/4 emulator written in Rust with macroquad"
 
 [dependencies]
 macroquad = "0.4"
+egui-macroquad = "0.17"
 
 [[bin]]
 name = "plus4emu"

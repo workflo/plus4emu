@@ -8,16 +8,19 @@
 /// of the License, or (at your option) any later version.
 
 mod cpu_state;
-mod plus4;
-mod screen;
 mod keyboard;
+mod plus4;
 mod prg_loader;
+mod screen;
+mod ui;
 
 use macroquad::prelude::*;
-use plus4::{Plus4, SCREEN_WIDTH, SCREEN_HEIGHT};
+use plus4::{Plus4, SCREEN_HEIGHT, SCREEN_WIDTH};
 use screen::Screen;
 use keyboard::KeyboardMatrix;
 use prg_loader::PrgFile;
+use ui::state::EmulatorAction;
+use ui::EmulatorUi;
 
 const SCALE: f32 = 3.0;
 
@@ -90,6 +93,9 @@ async fn main() {
     // Initialize keyboard
     let mut keyboard = KeyboardMatrix::new();
 
+    // Initialize UI
+    let mut emulator_ui = EmulatorUi::new();
+
     // Emulation state
     let cycles_per_frame = plus4::CLOCK_FREQUENCY / 60;
     let mut accumulated_cycles;
@@ -98,61 +104,73 @@ async fn main() {
     let mut prg_loaded = false;
 
     println!("Plus/4 Emulator started!");
-    println!("Press ESC to exit");
-    println!("Press F12 to load test.prg");
+    println!("Press ESC to open menu");
+    println!("Press F11 to reset");
 
-    loop {
-        // Input handling
-        keyboard.update();
+    let mut running = true;
 
-        if is_key_down(KeyCode::Escape) {
-            break;
+    while running {
+        // ESC toggles UI
+        if is_key_pressed(KeyCode::Escape) {
+            emulator_ui.toggle();
         }
 
-        // Update emulator keyboard state
-        emulator.update_keyboard(keyboard.matrix);
+        // Only update keyboard if UI is not visible
+        if !emulator_ui.wants_keyboard() {
+            keyboard.update();
+            emulator.update_keyboard(keyboard.matrix);
 
-        // Magic hotkey F12: Load test PRG file
-        if is_key_pressed(KeyCode::F12) && !prg_loaded {
-            println!("\n=== Loading test.prg ===");
-            match PrgFile::load_from_file("prg\\COBRA.PRG") {
-                Ok(prg) => {
-                    println!("PRG file loaded: ${:04X} - ${:04X}",
-                             prg.load_address, prg.end_address());
-                    emulator.load_and_run_prg(&prg);
-                    prg_loaded = true;
-                    println!("=== PRG loaded and started ===\n");
+            // F11: Reset emulator (also works when UI is closed)
+            if is_key_pressed(KeyCode::F11) {
+                println!("Resetting emulator...");
+                emulator.hard_reset();
+                prg_loaded = false;
+            }
+        }
+
+        // Process UI actions
+        if let Some(action) = emulator_ui.take_action() {
+            match action {
+                EmulatorAction::Reset => {
+                    println!("Resetting emulator (from UI)...");
+                    emulator.hard_reset();
+                    prg_loaded = false;
                 }
-                Err(e) => {
-                    println!("Error loading test.prg: {}", e);
-                    println!("Creating embedded test PRG instead...");
-
-                    // Create a simple test PRG in memory
-                    // This is a simple BASIC program: 10 PRINT "HELLO PLUS/4!"
-                    let test_prg = create_test_prg();
-                    emulator.load_and_run_prg(&test_prg);
-                    prg_loaded = true;
-                    println!("=== Embedded test PRG loaded ===\n");
+                EmulatorAction::LoadPrg(path) => {
+                    println!("Loading PRG from UI: {}", path);
+                    match PrgFile::load_from_file(&path) {
+                        Ok(prg) => {
+                            println!(
+                                "PRG file loaded: ${:04X} - ${:04X}",
+                                prg.load_address,
+                                prg.end_address()
+                            );
+                            emulator.load_and_run_prg(&prg);
+                            prg_loaded = true;
+                            println!("PRG loaded successfully");
+                        }
+                        Err(e) => {
+                            println!("Error loading PRG: {}", e);
+                        }
+                    }
+                }
+                EmulatorAction::Quit => {
+                    running = false;
                 }
             }
         }
 
-        // R key: Reset emulator
-        if is_key_pressed(KeyCode::F11) {
-            println!("Resetting emulator...");
-            emulator.hard_reset();
-            prg_loaded = false;
-        }
+        // Emulation loop - only run if UI is not visible (paused)
+        if !emulator_ui.wants_keyboard() {
+            accumulated_cycles = 0;
+            while accumulated_cycles < cycles_per_frame {
+                emulator.step();
+                accumulated_cycles += emulator.clock_ticks;
 
-        // Emulation loop - execute instructions until we've done enough for one frame
-        accumulated_cycles = 0;
-        while accumulated_cycles < cycles_per_frame {
-            emulator.step();
-            accumulated_cycles += emulator.clock_ticks;
-
-            // Limit to prevent infinite loop on errors
-            if accumulated_cycles > cycles_per_frame * 2 {
-                break;
+                // Limit to prevent infinite loop on errors
+                if accumulated_cycles > cycles_per_frame * 2 {
+                    break;
+                }
             }
         }
 
@@ -183,23 +201,11 @@ async fn main() {
             WHITE,
         );
 
-        // if prg_loaded {
-        //     draw_text(
-        //         "PRG Loaded",
-        //         10.0,
-        //         60.0,
-        //         20.0,
-        //         GREEN,
-        //     );
-        // } else {
-        //     draw_text(
-        //         "Press F12 to load PRG",
-        //         10.0,
-        //         60.0,
-        //         20.0,
-        //         YELLOW,
-        //     );
-        // }
+        // Draw egui UI
+        egui_macroquad::ui(|ctx| {
+            emulator_ui.render(ctx);
+        });
+        egui_macroquad::draw();
 
         next_frame().await;
     }
